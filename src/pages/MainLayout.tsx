@@ -12,8 +12,11 @@ import { AssetNavigation } from '../components/AssetNavigation'
 import { LocationNavigation } from '../components/LocationNavigation'
 import { AdministrationNavigation } from '../components/AdministrationNavigation'
 import { AssetDetailsPanel } from '../components/AssetDetailsPanel'
+import { ServiceTemplates } from './Administration/ServiceTemplates'
+import { AddServiceTemplate } from './Administration/AddServiceTemplate'
+import { DashboardNavigation } from '../components/DashboardNavigation'
 
-export const Dashboard = () => {
+export const MainLayout = () => {
     const { user, profile, loading, logout } = useAuth()
     const location = useLocation()
     const navigate = useNavigate() // Initialize navigate
@@ -21,7 +24,12 @@ export const Dashboard = () => {
     const [isLoadingAssets, setIsLoadingAssets] = useState(true)
     const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set())
     const [previewAsset, setPreviewAsset] = useState<any | null>(null) // State for the side panel
-    const [activeTab, setActiveTab] = useState('asset')
+    const [activeTab, setActiveTab] = useState(() => {
+        if (location.pathname.startsWith('/administration')) {
+            return 'administration'
+        }
+        return 'asset'
+    })
     const [showAdminMenu, setShowAdminMenu] = useState(false)
 
     const fetchAssets = async () => {
@@ -54,6 +62,19 @@ export const Dashboard = () => {
             fetchAssets()
         }
     }, [location.state])
+
+    // Sync active tab with URL location
+    useEffect(() => {
+        if (location.pathname.startsWith('/administration')) {
+            setActiveTab('administration')
+        } else if (location.pathname === '/dashboard') {
+            // Only reset to asset if we are strictly on dashboard root and activeTab was administration
+            // This prevents overwriting user selection if they are toggling between Asset/Location on dashboard
+            if (activeTab === 'administration') {
+                setActiveTab('asset')
+            }
+        }
+    }, [location.pathname])
 
     // Load initial state from localStorage or location state
     const [activeAction, setActiveAction] = useState<string | null>(() => {
@@ -105,6 +126,9 @@ export const Dashboard = () => {
         } else {
             setActiveTab(tabId)
             setShowAdminMenu(false)
+            if (location.pathname !== '/dashboard') {
+                navigate('/dashboard')
+            }
         }
     }
 
@@ -120,6 +144,10 @@ export const Dashboard = () => {
     // Route to AddAssetPage for add mode
     if (activeAction === 'add') {
         return <AddAssetPage onClose={handleCloseAction} />
+    }
+
+    if (location.pathname === '/administration/service-templates/add') {
+        return <AddServiceTemplate />
     }
 
 
@@ -142,7 +170,9 @@ export const Dashboard = () => {
             />
 
             {/* Main Content Area */}
-            {activeTab === 'asset' && (
+            {location.pathname === '/administration/service-templates' ? (
+                <ServiceTemplates />
+            ) : activeTab === 'asset' ? (
                 // This component (AssetNavigation) receives the 'assets' list from Dashboard
                 // and handles the actual display of the table columns and rows.
                 <AssetNavigation
@@ -155,18 +185,23 @@ export const Dashboard = () => {
                     onAssetPreview={(asset: any) => setPreviewAsset(asset)} // Callback when an asset is clicked/selected for preview
                     totalItems={assets.length}
                 />
-            )}
+            ) : activeTab === 'location' ? (
+                <LocationNavigation />
+            ) : activeTab === 'dashboard' ? (
+                <DashboardNavigation />
+            ) : null}
 
-            {/* Asset Details Slide-out Panel */}
+
+
+
+
+
+
             {/* Asset Details Slide-out Panel */}
             <AssetDetailsPanel
                 asset={previewAsset}
                 onClose={() => setPreviewAsset(null)}
             />
-
-            {activeTab === 'location' && (
-                <LocationNavigation />
-            )}
 
             {/* 
                 ADMINISTRATION OVERLAY

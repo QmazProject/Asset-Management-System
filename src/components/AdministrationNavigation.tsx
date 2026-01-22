@@ -1,10 +1,12 @@
 import { X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 
 interface AdministrationNavigationProps {
     onClose: () => void
 }
 
 export const AdministrationNavigation = ({ onClose }: AdministrationNavigationProps) => {
+    const navigate = useNavigate()
     const sections = [
         {
             title: 'Assets',
@@ -97,7 +99,14 @@ export const AdministrationNavigation = ({ onClose }: AdministrationNavigationPr
                                     <li key={item}>
                                         <button
                                             className="text-sm text-gray-600 hover:text-red-600 hover:underline decoration-2 underline-offset-4 transition-colors text-left w-full block"
-                                            onClick={() => console.log(`Clicked ${item}`)}
+                                            onClick={() => {
+                                                if (item === 'Service templates') {
+                                                    navigate('/administration/service-templates')
+                                                    onClose()
+                                                } else {
+                                                    console.log(`Clicked ${item}`)
+                                                }
+                                            }}
                                         >
                                             {item}
                                         </button>

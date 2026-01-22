@@ -38,10 +38,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 // Import your page components
 import { LoginPage } from './pages/LoginPage'          // Login form UI
 import { RegisterPage } from './pages/RegisterPage'    // Registration form UI
-import { Dashboard } from './pages/Dashboard'          // Protected dashboard
+import { MainLayout } from './pages/MainLayout'
 import { ManageServicePage } from './pages/ManageServicePage'
 import { HistoricService } from './pages/HistoricService'
 import { UpcomingService } from './pages/UpcomingService'
+
 
 /**
  * ============================================================================
@@ -137,10 +138,12 @@ function App() {
                         <Route path="/register" element={<RegisterPage />} />
 
                         {/* /dashboard shows the Dashboard (protected page after login) */}
-                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/dashboard" element={<MainLayout />} />
                         <Route path="/manage-services" element={<ManageServicePage />} />
                         <Route path="/assign-historic-service" element={<HistoricService />} />
                         <Route path="/assign-upcoming-service" element={<UpcomingService />} />
+                        <Route path="/administration/service-templates" element={<MainLayout />} />
+                        <Route path="/administration/service-templates/add" element={<MainLayout />} />
 
                         {/* 
               TO ADD A NEW PAGE:

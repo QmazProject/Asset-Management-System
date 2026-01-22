@@ -1,0 +1,11 @@
+# Supabase local configuration
+
+[db]
+port = 55056
+shadow_port = 55055
+
+[api]
+port = 55057
+
+[studio]
+port = 55058
