@@ -144,6 +144,7 @@ function App() {
                         <Route path="/assign-upcoming-service" element={<UpcomingService />} />
                         <Route path="/administration/service-templates" element={<MainLayout />} />
                         <Route path="/administration/service-templates/add" element={<MainLayout />} />
+                        <Route path="/administration/service-templates/edit/:id" element={<MainLayout />} />
 
                         {/* 
               TO ADD A NEW PAGE:

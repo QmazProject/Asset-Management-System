@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { X, Upload } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -21,18 +21,40 @@ export const HistoricService = () => {
     const [provider, setProvider] = useState('')
     const [notes, setNotes] = useState('')
 
+    // Service Templates
+    const [templates, setTemplates] = useState<any[]>([])
+
+    useEffect(() => {
+        const fetchTemplates = async () => {
+            const { data } = await supabase
+                .from('service_templates')
+                .select(`
+                    *,
+                    service_template_attachments (count)
+                `)
+                .order('name')
+
+            if (data) {
+                // Remove duplicates if any
+                const uniqueTemplates = Array.from(new Map(data.map(item => [item['name'], item])).values());
+                setTemplates(uniqueTemplates);
+            }
+        }
+        fetchTemplates()
+    }, [])
+
     const handleAssign = async () => {
         if (!service || !scheduledDate || !completionDate || !serviceResult) return
 
         setIsSubmitting(true)
         try {
             const serviceData = {
-                id: `temp-${Date.now()}`, // Temporary ID for local state
+                id: `temp-${Date.now()}`,
                 asset_id: assetId,
-                service_type: service,
+                service_name: service,
                 category: 'Historic',
                 status: 'Completed',
-                scheduled_date: scheduledDate,
+                next_service_date: scheduledDate,
                 completion_date: completionDate,
                 provider: provider,
                 cost: cost ? parseFloat(cost) : null,
@@ -42,7 +64,6 @@ export const HistoricService = () => {
             }
 
             if (assetId) {
-                // If asset exists, save to DB
                 const { error } = await supabase
                     .from('asset_services')
                     .insert([serviceData])
@@ -50,12 +71,11 @@ export const HistoricService = () => {
                 if (error) throw error
             }
 
-            // Navigate back with data (either for refresh or for local state)
             navigate('/manage-services', {
                 state: {
                     ...location.state,
-                    refresh: !!assetId, // Only trigger refetch if we saved to DB
-                    newService: !assetId ? serviceData : null // Pass new service back if local
+                    refresh: !!assetId,
+                    newService: !assetId ? serviceData : null
                 }
             })
         } catch (error) {
@@ -66,10 +86,14 @@ export const HistoricService = () => {
         }
     }
 
-    // Allow render even if assetId is missing (for new users)
     if (!assetData && !assetId) {
         return <div className="p-4">Error: No asset data found.</div>
     }
+
+    // Find selected template details
+    const selectedTemplate = templates.find(t => t.name === service)
+    const frequencyDisplay = selectedTemplate ? `${selectedTemplate.frequency_number || 1} ${selectedTemplate.unit_of_measurement || 'Years'}` : ''
+    const attCount = selectedTemplate?.service_template_attachments?.[0]?.count || 0
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -107,13 +131,22 @@ export const HistoricService = () => {
                                 onChange={(e) => setService(e.target.value)}
                             >
                                 <option value="" disabled>Type or select...</option>
-                                <option value="Preventive Maintenance - Aircon">Preventive Maintenance - Aircon</option>
-                                <option value="Preventive Maintenance - OBM">Preventive Maintenance - OBM</option>
-                                <option value="Repair">Repair</option>
-                                <option value="SAMPLE-MILEAGE (TIRE)">SAMPLE-MILEAGE (TIRE)</option>
-                                <option value="Vehicle Registration">Vehicle Registration</option>
+                                {templates.map(t => (
+                                    <option key={t.id} value={t.name}>{t.name}</option>
+                                ))}
                             </select>
-                            <p className="mt-1 text-sm text-gray-500">Description (from template)</p>
+                            {selectedTemplate && (
+                                <div className="mt-2 p-3 bg-gray-50 rounded-md text-sm text-gray-600 space-y-1 border border-gray-100">
+                                    <div className="flex justify-between">
+                                        <span className="font-medium text-gray-700">Frequency:</span>
+                                        <span>Every {frequencyDisplay}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="font-medium text-gray-700">Attachments:</span>
+                                        <span>{attCount > 0 ? `${attCount} Attachment${attCount > 1 ? 's' : ''}` : 'No attachments'}</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Status (Radio) */}

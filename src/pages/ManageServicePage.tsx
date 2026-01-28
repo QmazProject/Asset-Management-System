@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, MapPin, Barcode, FileText, Info, ChevronDown, Plus, X } from 'lucide-react'
+import { ArrowLeft, User, MapPin, Barcode, FileText, Info, ChevronDown, X, Wrench, Pencil, ClipboardCheck, ArrowUpDown } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
@@ -32,6 +32,28 @@ interface AssetData {
     notes: string
 }
 
+const TextTooltip = ({
+    text,
+    position = 'bottom',
+    align = 'center',
+    children
+}: {
+    text: string;
+    position?: 'top' | 'bottom';
+    align?: 'center' | 'left';
+    children: React.ReactNode
+}) => (
+    <div className="group/tooltip relative w-fit">
+        {children}
+        <div className={`absolute ${align === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-0'} ${position === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} hidden group-hover/tooltip:block whitespace-nowrap z-50`}>
+            <div className="bg-black text-white text-xs px-2 py-1 rounded shadow-lg relative">
+                {text}
+                <div className={`absolute ${align === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-4'} border-4 border-transparent ${position === 'top' ? 'top-full border-t-black' : 'bottom-full border-b-black'}`}></div>
+            </div>
+        </div>
+    </div>
+);
+
 export const ManageServicePage = () => {
     const location = useLocation()
     const navigate = useNavigate()
@@ -50,6 +72,8 @@ export const ManageServicePage = () => {
         return initial
     })
 
+    const [templateMap, setTemplateMap] = useState<Record<string, any>>({})
+
     // Selection state for services (only one at a time)
     const [selectedService, setSelectedService] = useState<string | null>(null)
 
@@ -61,16 +85,40 @@ export const ManageServicePage = () => {
         if (!assetId) return
         setLoading(true)
         try {
-            const { data, error } = await supabase
-                .from('asset_services')
-                .select('*')
-                .eq('asset_id', assetId)
-                .order('scheduled_date', { ascending: false })
+            // Parallel fetch: Services and Templates
+            const [servicesResult, templatesResult] = await Promise.all([
+                supabase
+                    .from('asset_services')
+                    .select('*')
+                    .eq('asset_id', assetId)
+                    .order('next_service_date', { ascending: true }),
+                supabase
+                    .from('service_templates')
+                    .select('name, description, service_type, frequency_number, unit_of_measurement, based_on, service_template_attachments (count)')
+            ])
 
-            if (error) throw error
-            setServices(data || [])
+            if (servicesResult.error) throw servicesResult.error
+            if (templatesResult.error) throw templatesResult.error
+
+            setServices(servicesResult.data || [])
+
+            // Build Template Map
+            const map: Record<string, any> = {}
+            if (templatesResult.data) {
+                templatesResult.data.forEach((t: any) => {
+                    map[t.name] = {
+                        description: t.description || '',
+                        frequency: t.service_type === 'Recurrent'
+                            ? `Every ${t.frequency_number || '?'} ${t.unit_of_measurement || t.based_on?.split(' ')[0]}`
+                            : 'One time service',
+                        attachmentCount: t.service_template_attachments?.[0]?.count || 0
+                    }
+                })
+            }
+            setTemplateMap(map)
+
         } catch (error) {
-            console.error('Error fetching services:', error)
+            console.error('Error fetching data:', error)
         } finally {
             setLoading(false)
         }
@@ -273,83 +321,50 @@ export const ManageServicePage = () => {
             {/* Filter Bar */}
             <div className="bg-gray-50 border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-4">
                 <div className="max-w-7xl mx-auto flex flex-wrap gap-4 items-center justify-between">
-                    <div className="flex flex-wrap gap-4">
-                        {/* Service Type Dropdown */}
+                    <div className="flex items-center gap-3">
+                        {/* Upcoming Services - Dark Active State */}
                         <div className="relative">
-                            <select
-                                value={filterType}
-                                onChange={(e) => setFilterType(e.target.value as 'Historic' | 'Upcoming')}
-                                className="appearance-none flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded shadow-sm hover:bg-gray-50 transition-colors pr-8 focus:outline-none focus:ring-2 focus:ring-lime-500 cursor-pointer"
-                                style={{ backgroundImage: 'none' }}
+                            <button
+                                onClick={() => setFilterType('Upcoming')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors shadow-sm
+                                    ${filterType === 'Upcoming' ? 'bg-gray-800 text-white border border-gray-800' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}
                             >
-                                <option value="Historic" disabled={!assetId}>Historic services</option>
-                                <option value="Upcoming">Upcoming services</option>
-                            </select>
-                            <ChevronDown className="w-4 h-4 text-gray-500 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+                                Upcoming services
+                                <ChevronDown className={`w-4 h-4 ${filterType === 'Upcoming' ? 'text-gray-300' : 'text-gray-500'}`} />
+                            </button>
                         </div>
 
-                        {/* Show filters only when editing existing asset (has assetId) */}
-                        {assetId && (
-                            <>
-                                {/* Filters for Upcoming Services */}
-                                {filterType === 'Upcoming' && (
-                                    <>
-                                        {/* Frequency */}
-                                        <div className="relative">
-                                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded shadow-sm hover:bg-gray-50 transition-colors">
-                                                Frequency
-                                                <ChevronDown className="w-4 h-4 ml-1 text-gray-500" />
-                                            </button>
-                                        </div>
+                        {/* Historic Services for switching */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setFilterType('Historic')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors shadow-sm
+                                    ${filterType === 'Historic' ? 'bg-gray-800 text-white border border-gray-800' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}
+                            >
+                                Historic services
+                                <ChevronDown className={`w-4 h-4 ${filterType === 'Historic' ? 'text-gray-300' : 'text-gray-500'}`} />
+                            </button>
+                        </div>
 
-                                        {/* Attachments */}
-                                        <div className="relative">
-                                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded shadow-sm hover:bg-gray-50 transition-colors">
-                                                Attachments
-                                                <ChevronDown className="w-4 h-4 ml-1 text-gray-500" />
-                                            </button>
-                                        </div>
-
-                                        {/* Schedule Date */}
-                                        <div className="relative">
-                                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded shadow-sm hover:bg-gray-50 transition-colors">
-                                                Schedule date
-                                                <ChevronDown className="w-4 h-4 ml-1 text-gray-500" />
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
-
-                                {/* Filters for Historic Services */}
-                                {filterType === 'Historic' && (
-                                    <>
-                                        {/* Provider */}
-                                        <div className="relative">
-                                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded shadow-sm hover:bg-gray-50 transition-colors">
-                                                Provider
-                                                <ChevronDown className="w-4 h-4 ml-1 text-gray-500" />
-                                            </button>
-                                        </div>
-
-                                        {/* Schedule Date */}
-                                        <div className="relative">
-                                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded shadow-sm hover:bg-gray-50 transition-colors">
-                                                Schedule date
-                                                <ChevronDown className="w-4 h-4 ml-1 text-gray-500" />
-                                            </button>
-                                        </div>
-
-                                        {/* Completion Date */}
-                                        <div className="relative">
-                                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded shadow-sm hover:bg-gray-50 transition-colors">
-                                                Completion date
-                                                <ChevronDown className="w-4 h-4 ml-1 text-gray-500" />
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
-                            </>
-                        )}
+                        {/* Other Filters (Visual Only for now based on mockup) */}
+                        <div className="relative">
+                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded shadow-sm hover:bg-gray-50 transition-colors">
+                                Frequency
+                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                            </button>
+                        </div>
+                        <div className="relative">
+                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded shadow-sm hover:bg-gray-50 transition-colors">
+                                Attachments
+                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                            </button>
+                        </div>
+                        <div className="relative">
+                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded shadow-sm hover:bg-gray-50 transition-colors">
+                                Schedule date
+                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -382,21 +397,40 @@ export const ManageServicePage = () => {
                         </div>
                     ) : (
                         <div className="bg-white rounded-lg shadow overflow-hidden">
-                            {/* Header with Count and Buttons */}
+                            {/* Action Toolbar */}
                             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                                <div className="text-base font-semibold text-gray-800">
+                                <div className="text-base font-bold text-gray-800">
                                     {displayedServices.length} {displayedServices.length === 1 ? 'Service' : 'Services'}
                                 </div>
-                                <div className="flex items-center gap-4">
+
+                                <div className="flex items-center gap-2">
                                     {/* Assign Button */}
                                     <button
                                         onClick={handleAssignClick}
-                                        className="flex flex-col items-center gap-1 group"
+                                        className="flex flex-col items-center gap-1 group px-3"
                                     >
-                                        <div className="w-10 h-10 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
-                                            <Plus className="w-5 h-5 text-gray-700" />
-                                        </div>
-                                        <span className="text-xs text-gray-600 font-medium">Assign</span>
+                                        <Wrench className="w-5 h-5 text-gray-600 group-hover:text-gray-900 transition-colors" />
+                                        <span className="text-[10px] text-gray-500 group-hover:text-gray-900 font-medium">Assign</span>
+                                    </button>
+
+                                    {/* Edit Button */}
+                                    <button
+                                        disabled={!selectedService}
+                                        className={`flex flex-col items-center gap-1 group px-3 ${!selectedService ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                                    // Add edit logic here later
+                                    >
+                                        <Pencil className="w-5 h-5 text-gray-600 group-hover:text-gray-900 transition-colors" />
+                                        <span className="text-[10px] text-gray-500 group-hover:text-gray-900 font-medium">Edit</span>
+                                    </button>
+
+                                    {/* Complete Button */}
+                                    <button
+                                        disabled={!selectedService}
+                                        className={`flex flex-col items-center gap-1 group px-3 ${!selectedService ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                                    // Add complete logic here later
+                                    >
+                                        <ClipboardCheck className="w-5 h-5 text-gray-600 group-hover:text-gray-900 transition-colors" />
+                                        <span className="text-[10px] text-gray-500 group-hover:text-gray-900 font-medium">Complete</span>
                                     </button>
 
                                     {/* Remove Button */}
@@ -407,61 +441,95 @@ export const ManageServicePage = () => {
                                             }
                                         }}
                                         disabled={!selectedService}
-                                        className="flex flex-col items-center gap-1 group"
+                                        className={`flex flex-col items-center gap-1 group px-3 ${!selectedService ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
                                     >
-                                        <div className={`w-10 h-10 rounded flex items-center justify-center transition-colors ${selectedService
-                                            ? 'bg-green-100 hover:bg-green-200'
-                                            : 'bg-gray-100 opacity-50 cursor-not-allowed'
-                                            }`}>
-                                            <X className={`w-5 h-5 ${selectedService
-                                                ? 'text-green-700'
-                                                : 'text-gray-400'
-                                                }`} />
-                                        </div>
-                                        <span className={`text-xs font-medium ${selectedService
-                                            ? 'text-green-600'
-                                            : 'text-gray-400'
-                                            }`}>Remove</span>
+                                        <X className="w-5 h-5 text-gray-600 group-hover:text-red-600 transition-colors" />
+                                        <span className="text-[10px] text-gray-500 group-hover:text-red-600 font-medium">Remove</span>
                                     </button>
-
-                                    {/* Show Done button only when adding new asset (no assetId) */}
-                                    {!assetId && (
-                                        <button
-                                            onClick={handleBack}
-                                            className="ml-2 px-6 py-2 bg-gray-600 text-white text-sm font-medium rounded hover:bg-gray-700 transition-colors shadow-sm"
-                                        >
-                                            Done
-                                        </button>
-                                    )}
                                 </div>
+
+                                <button className="flex flex-col items-center gap-1 group px-3">
+                                    <ArrowUpDown className="w-5 h-5 text-gray-600 group-hover:text-gray-900 transition-colors" />
+                                    <span className="text-[10px] text-gray-500 group-hover:text-gray-900 font-medium">Sort</span>
+                                </button>
                             </div>
 
-                            {/* Table without headers */}
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                    {displayedServices.map((service) => (
-                                        <tr
+                            {/* List View */}
+                            <div className="divide-y divide-gray-100">
+                                {displayedServices.map((service) => {
+                                    const templateInfo = templateMap[service.service_name] || {}
+                                    const frequencyDisplay = templateInfo.frequency || 'Recurrent'
+                                    const attCount = templateInfo.attachmentCount || 0
+                                    const descriptionDisplay = templateInfo.description || `${service.service_name} - ${service.category} service...`
+
+                                    return (
+                                        <div
                                             key={service.id}
                                             onClick={() => handleRowClick(service.id)}
-                                            className={`cursor-pointer transition-colors ${selectedService === service.id
-                                                ? 'bg-green-50 hover:bg-green-100'
+                                            className={`px-6 py-4 flex items-center justify-between cursor-pointer transition-colors ${selectedService === service.id
+                                                ? 'bg-red-50 hover:bg-red-50 border-l-4 border-l-red-500 pl-[20px]'
                                                 : 'hover:bg-gray-50'
                                                 }`}
                                         >
-                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">{service.service_type}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">{service.category} Services</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500">{service.scheduled_date}</td>
-                                            <td className="px-6 py-4">
-                                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                                    ${service.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}
-                                                `}>
-                                                    {service.status}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                            <div className="flex-1 grid grid-cols-12 gap-4 items-center">
+                                                {/* Column 1: Date & Name */}
+                                                <div className="col-span-3">
+                                                    {/* Date formatting - assuming YYYY-MM-DD string */}
+                                                    <TextTooltip text="Scheduled date" align="left">
+                                                        <div className="text-red-500 text-sm font-medium mb-1 w-fit">
+                                                            {new Date(service.next_service_date || service.scheduled_date || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                        </div>
+                                                    </TextTooltip>
+                                                    <TextTooltip text="Service name" align="left">
+                                                        <div className="text-gray-900 font-bold text-base w-fit">
+                                                            {service.service_name}
+                                                        </div>
+                                                    </TextTooltip>
+                                                </div>
+
+                                                {/* Column 2: Frequency & Attachments */}
+                                                <div className="col-span-4">
+                                                    <TextTooltip text="Service frequency">
+                                                        <div className="text-gray-700 text-sm mb-1 w-fit">
+                                                            {frequencyDisplay}
+                                                        </div>
+                                                    </TextTooltip>
+                                                    <TextTooltip text="Attachments">
+                                                        <div className="text-gray-500 text-sm w-fit">
+                                                            {attCount > 0 ? `${attCount} Attachment${attCount > 1 ? 's' : ''}` : 'No attachments'}
+                                                        </div>
+                                                    </TextTooltip>
+                                                </div>
+
+                                                {/* Column 3: Description & Badge */}
+                                                <div className="col-span-5 flex items-center justify-between">
+                                                    <TextTooltip text="Service description">
+                                                        <div className="text-gray-600 text-sm truncate pr-4 max-w-[250px]">
+                                                            {descriptionDisplay}
+                                                        </div>
+                                                    </TextTooltip>
+
+                                                    <TextTooltip text="Status">
+                                                        <span className={`px-4 py-1 rounded-full text-sm font-medium whitespace-nowrap
+                                                            ${(service.status === 'Completed') ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}
+                                                         `}>
+                                                            {service.status === 'Pending' ? 'Upcoming' : (service.status || 'Upcoming')}
+                                                        </span>
+                                                    </TextTooltip>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+
+                            {/* Footer Info */}
+                            <div className="bg-gray-50 px-6 py-4 text-center">
+                                <div className="flex items-center justify-center gap-2 text-gray-400 text-sm">
+                                    <div className="w-4 h-4 rounded-full bg-gray-300 text-white flex items-center justify-center text-[10px] font-bold">i</div>
+                                    No more results to show.
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

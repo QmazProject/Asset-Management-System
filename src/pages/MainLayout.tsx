@@ -14,6 +14,7 @@ import { AdministrationNavigation } from '../components/AdministrationNavigation
 import { AssetDetailsPanel } from '../components/AssetDetailsPanel'
 import { ServiceTemplates } from './Administration/ServiceTemplates'
 import { AddServiceTemplate } from './Administration/AddServiceTemplate'
+import { EditServiceTemplate } from './Administration/EditServiceTemplate'
 import { DashboardNavigation } from '../components/DashboardNavigation'
 
 export const MainLayout = () => {
@@ -150,10 +151,18 @@ export const MainLayout = () => {
         return <AddServiceTemplate />
     }
 
+    if (location.pathname.startsWith('/administration/service-templates/edit/')) {
+        return <EditServiceTemplate />
+    }
+
 
     return (
         <div className="min-h-screen bg-white">
-            {/* Top Utility Header */}
+            {/* 
+                1. TOP HEADER
+                This is the very top bar containing the user's name, branch, and logout button.
+                It lives here so it's visible on all dashboard pages.
+            */}
             {profile && (
                 <TopHeader
                     userName={profile.full_name}
@@ -162,19 +171,28 @@ export const MainLayout = () => {
                 />
             )}
 
-            {/* Navigation Tabs */}
+            {/* 
+                2. NAVIGATION TABS
+                The main tab bar (Assets, Locations, Dashboard, Administration).
+                Clicking these changes the 'activeTab' state, which switches the view below.
+            */}
             <NavigationTabs
                 activeTab={activeTab}
                 onTabChange={handleTabChange}
                 adminMenuOpen={showAdminMenu}
             />
 
-            {/* Main Content Area */}
+            {/* 
+                3. MAIN CONTENT AREA
+                This section changes based on which tab is clicked.
+                It acts like a "switch" statement for your dashboard views.
+            */}
             {location.pathname === '/administration/service-templates' ? (
+                // Special route for Service Templates page
                 <ServiceTemplates />
             ) : activeTab === 'asset' ? (
-                // This component (AssetNavigation) receives the 'assets' list from Dashboard
-                // and handles the actual display of the table columns and rows.
+                // VIEW A: ASSETS LIST
+                // Shows the table of assets with the SearchBar and ActionToolbar
                 <AssetNavigation
                     onActionClick={handleActionChange}
                     activeAction={activeAction}
@@ -182,32 +200,31 @@ export const MainLayout = () => {
                     isLoading={isLoadingAssets}
                     selectedAssets={selectedAssets}
                     setSelectedAssets={setSelectedAssets}
-                    onAssetPreview={(asset: any) => setPreviewAsset(asset)} // Callback when an asset is clicked/selected for preview
+                    onAssetPreview={(asset: any) => setPreviewAsset(asset)}
                     totalItems={assets.length}
                 />
             ) : activeTab === 'location' ? (
+                // VIEW B: LOCATION MAP/LIST
                 <LocationNavigation />
             ) : activeTab === 'dashboard' ? (
+                // VIEW C: MAIN DASHBOARD STATS
                 <DashboardNavigation />
             ) : null}
 
-
-
-
-
-
-
-            {/* Asset Details Slide-out Panel */}
+            {/* 
+                4. SIDE SASH / DETAILS PANEL
+                This slides in from the right when you click on an asset row.
+                It sits "outside" the main content flow (fixed position).
+            */}
             <AssetDetailsPanel
                 asset={previewAsset}
                 onClose={() => setPreviewAsset(null)}
             />
 
             {/* 
-                ADMINISTRATION OVERLAY
-                Rendered conditionally based on showAdminMenu state.
-                It sits ON TOP of the active content (Asset/Location) because of its z-index in the component.
-                We pass onClose to allow the component to close itself.
+                5. ADMINISTRATION MENU (OVERLAY)
+                The dropdown menu that appears when you click "Administration".
+                It overlays the content.
             */}
             {showAdminMenu && (
                 <AdministrationNavigation onClose={() => setShowAdminMenu(false)} />

@@ -419,9 +419,9 @@ export const AddAssetPage = ({ onClose }: AddAssetPageProps) => {
                     if (assignedServices.length > 0) {
                         const servicesToInsert = assignedServices.map((service: any) => ({
                             asset_id: assetId,
-                            service_name: service.service,
+                            service_name: service.service_name || service.service_type || service.service,
                             category: service.category,
-                            next_service_date: service.date,
+                            next_service_date: service.next_service_date || service.scheduled_date || service.date,
                             status: service.status || 'Pending'
                         }))
                         const { error: serviceError } = await supabase

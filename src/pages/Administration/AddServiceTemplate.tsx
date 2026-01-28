@@ -64,8 +64,42 @@ export const AddServiceTemplate = () => {
             setIsSubmitting(true);
 
             // Validation
-            if (!name) {
+            if (!name.trim()) {
                 alert('Please fill in the required fields (Name)');
+                setIsSubmitting(false);
+                return;
+            }
+
+            if (serviceType === 'Recurrent' && !frequencyNumber) {
+                alert('Please fill in the required fields (Number in Service frequency)');
+                setIsSubmitting(false);
+                return;
+            }
+
+            if (notificationMode === 'manual' && !manualNotificationNumber) {
+                alert('Please fill in the required fields (Number in Notifications)');
+                setIsSubmitting(false);
+                return;
+                if (notificationMode === 'manual' && !manualNotificationNumber) {
+                    alert('Please fill in the required fields (Number in Notifications)');
+                    setIsSubmitting(false);
+                    return;
+                }
+
+            }
+
+            // Check for duplicate Name only
+            const { data: existing, error: checkError } = await supabase
+                .from('service_templates')
+                .select('id')
+                .eq('name', name.trim()) // Check trimmed name
+                // .eq('description', description) // Future: Un-comment to check description as well
+                .limit(1);
+
+            if (checkError) throw checkError;
+
+            if (existing && existing.length > 0) {
+                alert('A service template with this name already exists.');
                 setIsSubmitting(false);
                 return;
             }
@@ -379,7 +413,6 @@ export const AddServiceTemplate = () => {
                                             checked={serviceType === 'Recurrent'}
                                             onChange={(e) => setServiceType(e.target.value)}
                                             className="peer w-4 h-4 text-gray-600 border-gray-300 focus:ring-black"
-                                            defaultChecked
                                         />
                                     </div>
                                     <span className="text-sm text-gray-600">Recurrent</span>

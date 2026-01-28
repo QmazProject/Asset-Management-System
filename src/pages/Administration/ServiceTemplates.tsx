@@ -4,9 +4,31 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Plus, Pencil, Trash2, ArrowUpDown, ChevronDown, Info } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
+const TextTooltip = ({
+    text,
+    position = 'bottom',
+    align = 'center',
+    children
+}: {
+    text: string;
+    position?: 'top' | 'bottom';
+    align?: 'center' | 'left';
+    children: React.ReactNode
+}) => (
+    <div className="group/tooltip relative w-fit">
+        {children}
+        <div className={`absolute ${align === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-0'} ${position === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'} hidden group-hover/tooltip:block whitespace-nowrap z-50`}>
+            <div className="bg-black text-white text-xs px-2 py-1 rounded shadow-lg relative">
+                {text}
+                <div className={`absolute ${align === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-4'} border-4 border-transparent ${position === 'top' ? 'top-full border-t-black' : 'bottom-full border-b-black'}`}></div>
+            </div>
+        </div>
+    </div>
+);
+
 export const ServiceTemplates = () => {
     // State for row selection
-    const [selectedTemplateId, setSelectedTemplateId] = React.useState<number | null>(null);
+    const [selectedTemplateId, setSelectedTemplateId] = React.useState<string | number | null>(null);
     const navigate = useNavigate();
 
     const [templates, setTemplates] = React.useState<any[]>([]);
@@ -15,37 +37,68 @@ export const ServiceTemplates = () => {
     const fetchTemplates = async () => {
         try {
             setLoading(true);
-            const { data, error } = await supabase
-                .from('service_templates')
-                .select(`
-                    *,
-                    service_template_attachments (count)
-                `)
-                .order('created_at', { ascending: false });
 
-            if (error) throw error;
+            // Fetch All Templates AND Asset Usage in Parallel
+            const [templatesResult, assetsResult] = await Promise.all([
+                supabase
+                    .from('service_templates')
+                    .select(`
+                        *,
+                        service_template_attachments (count)
+                    `)
+                    .order('created_at', { ascending: false }),
+                supabase
+                    .from('asset_services')
+                    .select('service_name, asset_id')
+            ]);
 
-            console.log("Fetched templates:", data); // Debugging
+            if (templatesResult.error) throw templatesResult.error;
+            // Note: assetsResult error might be ignored or logged, but we shouldn't fail everything if it fails
+            if (assetsResult.error) console.error("Error fetching asset usage:", assetsResult.error);
 
-            const formattedData = data?.map(item => ({
-                id: item.id,
-                recurrence: item.service_type === 'Recurrent'
-                    ? `Every ${item.frequency_number || '?'} ${item.unit_of_measurement || item.based_on?.split(' ')[0]}`
-                    : 'One time service',
-                name: item.name,
-                // Logic for "Advance": if auto, use number+unit. If manual, use manual number+unit.
-                advance: `${item.notification_number || 0} ${item.notification_unit || 'Days'} in advance`,
-                attachments: item.service_template_attachments && item.service_template_attachments[0]?.count > 0
-                    ? `${item.service_template_attachments[0].count} Attachment(s)`
-                    : "No attachments",
-                assets: "0 Assets", // Placeholder for now
-                assetTemplates: "No asset templates",
-                critical: item.is_critical
-            })) || [];
+            const templatesData = templatesResult.data || [];
+            const assetsData = assetsResult.data || [];
+
+            // Calculate Asset Counts (Unique assets per service name)
+            const assetCountMap: Record<string, Set<string>> = {};
+            assetsData.forEach((item: any) => {
+                if (item.service_name) {
+                    if (!assetCountMap[item.service_name]) {
+                        assetCountMap[item.service_name] = new Set();
+                    }
+                    assetCountMap[item.service_name].add(item.asset_id);
+                }
+            });
+
+            console.log("Fetched templates:", templatesData); // Debugging
+
+            // Deduplicate: Keep the first occurrence (which is the latest due to sorting)
+            const uniqueData = templatesData ? Array.from(new Map(templatesData.map(item => [item['name'], item])).values()) : [];
+
+            const formattedData = uniqueData.map(item => {
+                const uniqueAssetCount = assetCountMap[item.name]?.size || 0;
+
+                return {
+                    id: item.id,
+                    recurrence: item.service_type === 'Recurrent'
+                        ? `Every ${item.frequency_number || '?'} ${item.unit_of_measurement || item.based_on?.split(' ')[0]}`
+                        : 'One time service',
+                    name: item.name,
+                    // Logic for "Advance": if auto, use number+unit. If manual, use manual number+unit.
+                    advance: `${item.notification_number || 0} ${item.notification_unit || 'Days'} in advance`,
+                    attachments: item.service_template_attachments && item.service_template_attachments[0]?.count > 0
+                        ? `${item.service_template_attachments[0].count} Attachment(s)`
+                        : "No attachments",
+                    assets: `${uniqueAssetCount} Asset${uniqueAssetCount !== 1 ? 's' : ''}`,
+                    assetTemplates: "No asset templates",
+                    critical: item.is_critical
+                };
+            }) || [];
 
             setTemplates(formattedData);
         } catch (error) {
             console.error('Error fetching templates:', error);
+            // Optionally set empty templates or show error state
         } finally {
             setLoading(false);
         }
@@ -109,9 +162,12 @@ export const ServiceTemplates = () => {
                             <Pencil className={`w-5 h-5 text-gray-600 ${selectedTemplateId ? 'group-hover:text-red-600' : ''} transition-colors`} />
                             <span className={`text-[10px] text-gray-500 ${selectedTemplateId ? 'group-hover:text-red-600' : ''} font-medium`}>Edit</span>
                         </button>
-                        <button className="flex flex-col items-center gap-1 group">
-                            <Trash2 className="w-5 h-5 text-gray-600 group-hover:text-red-600 transition-colors" />
-                            <span className="text-[10px] text-gray-500 group-hover:text-red-600 font-medium">Delete</span>
+                        <button
+                            disabled={!selectedTemplateId}
+                            className={`flex flex-col items-center gap-1 group ${!selectedTemplateId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            <Trash2 className={`w-5 h-5 text-gray-600 ${selectedTemplateId ? 'group-hover:text-red-600' : ''} transition-colors`} />
+                            <span className={`text-[10px] text-gray-500 ${selectedTemplateId ? 'group-hover:text-red-600' : ''} font-medium`}>Delete</span>
                         </button>
                     </div>
                 </div>
@@ -136,20 +192,32 @@ export const ServiceTemplates = () => {
                             <div className="flex items-start justify-between">
                                 {/* Column 1: Recurrence & Name */}
                                 <div className="w-1/3 pr-4">
-                                    <div className="text-red-500 text-sm mb-1">{template.recurrence}</div>
-                                    <div className="font-bold text-gray-800 text-base">{template.name}</div>
+                                    <TextTooltip text="Service frequency">
+                                        <div className="text-red-500 text-sm mb-1 w-fit">{template.recurrence}</div>
+                                    </TextTooltip>
+                                    <TextTooltip text="Service name" align="left">
+                                        <div className="font-bold text-gray-800 text-base w-fit">{template.name}</div>
+                                    </TextTooltip>
                                 </div>
 
                                 {/* Column 2: Advance & Attachments */}
                                 <div className="w-1/4">
-                                    <div className="text-gray-600 text-sm mb-1">{template.advance}</div>
-                                    <div className="text-gray-400 text-sm">{template.attachments}</div>
+                                    <TextTooltip text="Notification period" position="bottom">
+                                        <div className="text-gray-600 text-sm mb-1 w-fit">{template.advance}</div>
+                                    </TextTooltip>
+                                    <TextTooltip text="Attachments">
+                                        <div className="text-gray-400 text-sm w-fit">{template.attachments}</div>
+                                    </TextTooltip>
                                 </div>
 
                                 {/* Column 3: Assets & Asset Templates */}
                                 <div className="w-1/4">
-                                    <div className="text-gray-600 text-sm mb-1">{template.assets}</div>
-                                    <div className="text-gray-400 text-sm">{template.assetTemplates}</div>
+                                    <TextTooltip text="Asset count">
+                                        <div className="text-gray-600 text-sm mb-1 w-fit">{template.assets}</div>
+                                    </TextTooltip>
+                                    <TextTooltip text="Asset templates">
+                                        <div className="text-gray-400 text-sm w-fit">{template.assetTemplates}</div>
+                                    </TextTooltip>
                                 </div>
 
                                 {/* Column 4: Critical Badge */}

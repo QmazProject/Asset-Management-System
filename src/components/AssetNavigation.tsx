@@ -1,7 +1,7 @@
 import { ActionToolbar } from './ActionToolbar'
 import { SearchBar } from './SearchBar'
 import { Loader2, ArrowUp } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface AssetNavigationProps {
     onActionClick: (action: string) => void
@@ -29,7 +29,26 @@ export const AssetNavigation = ({
     const [showFilters, setShowFilters] = useState(true);
     const [showBackToTop, setShowBackToTop] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const filterHeight = 73; // Approximate height of SearchBar
+    const [filterHeight, setFilterHeight] = useState(0);
+    const searchContainerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const updateHeight = () => {
+            if (searchContainerRef.current) {
+                setFilterHeight(searchContainerRef.current.offsetHeight);
+            }
+        };
+
+        // Initial measurement
+        updateHeight();
+
+        const observer = new ResizeObserver(updateHeight);
+        if (searchContainerRef.current) {
+            observer.observe(searchContainerRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, []);
 
     // Filter assets based on search query
     const filteredAssets = assets.filter(asset => {
@@ -75,6 +94,7 @@ export const AssetNavigation = ({
         <>
             {/* Search Bar with Filters - Sticky initially, then slides up */}
             <div
+                ref={searchContainerRef}
                 className="sticky top-0 z-50 transition-transform duration-300 ease-in-out bg-white"
                 style={{
                     transform: showFilters ? 'translateY(0)' : 'translateY(-100%)',

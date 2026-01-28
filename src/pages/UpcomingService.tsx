@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -14,9 +14,29 @@ export const UpcomingService = () => {
     const [service, setService] = useState('')
     const [status, setStatus] = useState('Upcoming')
     const [scheduledDate, setScheduledDate] = useState('')
+    const [templates, setTemplates] = useState<any[]>([])
 
     // Defaulting these for simplified logic, or could be null
     const serviceResult = 'Pending'
+
+    useEffect(() => {
+        const fetchTemplates = async () => {
+            const { data } = await supabase
+                .from('service_templates')
+                .select(`
+                    *,
+                    service_template_attachments (count)
+                `)
+                .order('name')
+
+            if (data) {
+                // Remove duplicates if any
+                const uniqueTemplates = Array.from(new Map(data.map(item => [item['name'], item])).values());
+                setTemplates(uniqueTemplates);
+            }
+        }
+        fetchTemplates()
+    }, [])
 
     const handleAssign = async () => {
         if (!service || !scheduledDate) return
@@ -26,10 +46,10 @@ export const UpcomingService = () => {
             const serviceData = {
                 id: `temp-${Date.now()}`,
                 asset_id: assetId,
-                service_type: service,
+                service_name: service,
                 category: 'Upcoming',
                 status: 'Pending',
-                scheduled_date: scheduledDate,
+                next_service_date: scheduledDate,
                 completion_date: null,
                 service_result: serviceResult
             }
@@ -60,6 +80,12 @@ export const UpcomingService = () => {
     if (!assetData && !assetId) {
         return <div className="p-4">Error: No asset data found.</div>
     }
+
+    // Find selected template details
+    const selectedTemplate = templates.find(t => t.name === service)
+    const frequencyDisplay = selectedTemplate ? `${selectedTemplate.frequency_number || 1} ${selectedTemplate.unit_of_measurement || 'Years'}` : ''
+    // Handle attachment access safely
+    const attCount = selectedTemplate?.service_template_attachments?.[0]?.count || 0
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -96,12 +122,23 @@ export const UpcomingService = () => {
                                 onChange={(e) => setService(e.target.value)}
                             >
                                 <option value="" disabled>Type or select...</option>
-                                <option value="Preventive Maintenance - Aircon">Preventive Maintenance - Aircon</option>
-                                <option value="Preventive Maintenance - OBM">Preventive Maintenance - OBM</option>
-                                <option value="Repair">Repair</option>
-                                <option value="SAMPLE-MILEAGE (TIRE)">SAMPLE-MILEAGE (TIRE)</option>
-                                <option value="Vehicle Registration">Vehicle Registration</option>
+                                {templates.map((t) => (
+                                    <option key={t.id} value={t.name}>{t.name}</option>
+                                ))}
                             </select>
+                            {selectedTemplate && (
+                                <div className="mt-2 p-3 bg-gray-50 rounded-md text-sm text-gray-600 space-y-1 border border-gray-100">
+                                    <div className="flex justify-between">
+                                        <span className="font-medium text-gray-700">Frequency:</span>
+                                        <span>Every {frequencyDisplay}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="font-medium text-gray-700">Attachments:</span>
+                                        <span>{attCount > 0 ? `${attCount} Attachment${attCount > 1 ? 's' : ''}` : 'No attachments'}</span>
+                                    </div>
+                                    {/* Description isn't a standard column in templates based on previous reads, but using name as per previous logic if needed, or simply omitting if not present. Assuming name/description might be same or specialized. */}
+                                </div>
+                            )}
                         </div>
 
                         {/* Status (Radio) */}
